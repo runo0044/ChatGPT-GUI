@@ -19,8 +19,8 @@ def app():
     coloredlogs.install("DEBUG", logger=logger, fmt="%(asctime)s %(levelname)s     %(name)s %(message)s",
                         field_styles=const.DEFAULT_FIELD_STYLES(), level_styles=const.DEFAULT_LEVEL_STYLES())
 
-    UNCONVERT_VISIBLE = False
-    DEFAULT_CONVERTER = "あなたはこれからUserの文章を、以下のルールに従って書き換えるbotになります。\n" \
+    unconverted_visible = False
+    default_converter = "あなたはこれからUserの文章を、以下のルールに従って書き換えるbotになります。\n" \
                         "*Userの文章の内容は直接書かず、必ず大量の比喩と隠喩に変換して書きます。\n" \
                         "*Userの文章の内容は会話の真ん中辺りで書きます。\n" \
                         "*Userの文章を必ず3倍以上に水増し、最低5行以上書いてください。\n*Userの文章の一人称を猫に変更してください。\n" \
@@ -194,11 +194,25 @@ def app():
             f.write(json.dumps({"chatbot": chat_history, "original_history": original_chat_history},
                                ensure_ascii=False))
 
+    def question_answer(question_msg: str):
+        message = [{"role": "system", "content": "あなたは役に立つアシスタントです"}, {"role": "user", "content": question_msg}]
+
+        response = ChatGPTAPI.call_api(messages=message, temperature=0.5,
+                                       max_tokens=ChatGPTAPI.MAX_TOKEN - token_sum(message))
+
+        return response["choices"][0]["message"]["content"]
+
+    def qa_save_history(question_msg: str, answer_msg: str):
+        logger.info("save_qa_history")
+        with open("talk_save/qa_" + datetime.datetime.now().strftime("%Y_%m_%d_%H_%M_%S") + ".json",
+                  mode="w", encoding="utf-8") as f:
+            f.write(json.dumps({"Q": question_msg, "A": answer_msg}, ensure_ascii=False))
+
     # app Design
     with gr.Blocks() as webui:
-        with gr.Tab(label="chat bot"):
+        with gr.Tab(label="Chat Bot"):
             chatbot = gr.Chatbot(label="chat")
-            original_history = gr.Chatbot(label="chat_original", visible=UNCONVERT_VISIBLE)
+            original_history = gr.Chatbot(label="chat_original", visible=unconverted_visible)
             msg = gr.Textbox(label="message")
             with gr.Row():
                 submit = gr.Button("submit")
@@ -221,7 +235,7 @@ def app():
                     converter_role = gr.Radio(["system", "assistant", "user"], value="system",
                                               label="converter role", interactive=True)
                 converter_system_msg = gr.Textbox(label="converter message",
-                                                  value=DEFAULT_CONVERTER, interactive=True)
+                                                  value=default_converter, interactive=True)
 
         submit.click(submit_msg, [msg, chatbot, original_history], [msg, chatbot, original_history], queue=False) \
             .then(reply_msg, [chatbot, original_history, tmp, send_token, reply_token, role, system_msg,
@@ -235,4 +249,14 @@ def app():
         clear.click(history_clear, None, [chatbot, original_history], queue=False)
         save.click(save_history, [chatbot, original_history], None, queue=False)
 
+        with gr.Tab(label="Q & A"):
+            with gr.Row():
+                question = gr.Textbox(label="question", interactive=True)
+                answer = gr.Textbox(label="answer", interactive=False)
+            with gr.Row():
+                qa_submit = gr.Button("submit")
+                qa_save = gr.Button("save")
+
+        qa_submit.click(question_answer, question, answer, queue=False)
+        qa_save.click(qa_save_history, [question, answer], None, queue=False)
     webui.launch(inbrowser=True, server_port=3776)
