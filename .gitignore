@@ -1,0 +1,10 @@
+# cache dir
+__pycache__/
+
+# env file
+.env
+
+# log file
+api_response_log/*.json
+talk_save/*.json
+api_log.txt
